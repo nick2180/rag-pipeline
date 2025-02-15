@@ -6,3 +6,4 @@ pypdf
 pdfplumber
 markdownify
 chromadb
+langchain_community
