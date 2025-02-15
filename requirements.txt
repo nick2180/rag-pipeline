@@ -7,3 +7,8 @@ pdfplumber
 markdownify
 chromadb
 langchain_community
+transformers 
+torch 
+accelerate
+sentence_transformers
+numpy
