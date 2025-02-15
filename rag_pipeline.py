@@ -3,23 +3,24 @@ import pdfplumber
 from markdownify import markdownify
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from sentence_transformers import SentenceTransformer
-import numpy as np
+import torch
 
-# 📌 Chemin du dossier contenant les PDFs dans le repo
+# 📌 Configuration des chemins
 DATA_DIR = "data"
 MD_DIR = "markdown_files"
 DB_DIR = "chroma_db"
 RESULTS_FILE = "résultats.md"
 
-# 📌 Modèles Hugging Face
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # 📌 Modèle d’embedding
-GEN_MODEL = "mistralai/Mistral-7B-v0.3"  # 📌 Modèle pour la génération
+# 📌 Modèle d’embedding Hugging Face
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# 📌 Liste de questions
+# 📌 Modèle Hugging Face pour la génération
+GEN_MODEL = "mistralai/Mistral-7B-v0.3"
+
+# 📌 Liste de questions à poser automatiquement
 QUESTIONS = [
     "Qu'est-ce qu'une fonction en Python ?",
     "Comment utiliser une boucle for ?",
@@ -30,16 +31,16 @@ QUESTIONS = [
 
 # 📌 Chargement du modèle d’embedding
 print("🔍 Chargement du modèle d'embedding...")
-embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-
-def embed_texts(texts):
-    """Transforme une liste de textes en vecteurs d’embedding"""
-    return embedding_model.encode(texts, convert_to_numpy=True)
+embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
 # 📌 Chargement du modèle Hugging Face pour la génération
 print("🚀 Chargement du modèle de génération...")
 tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL)
-model = AutoModelForCausalLM.from_pretrained(GEN_MODEL, torch_dtype=torch.float16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    GEN_MODEL,
+    torch_dtype=torch.float16,
+    device_map="auto"
+)
 generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # 📌 Création des dossiers si nécessaire
@@ -67,46 +68,63 @@ def load_documents():
             pdf_path = os.path.join(DATA_DIR, filename)
             md_filename = filename.replace(".pdf", ".md")
             md_path = os.path.join(MD_DIR, md_filename)
+
+            # ✅ Convertir PDF en Markdown si nécessaire
             if not os.path.exists(md_path):
                 print(f"📝 Conversion du PDF en Markdown : {filename}")
                 convert_pdf_to_markdown(pdf_path, md_path)
-            loader = TextLoader(md_path)
+
+            # ✅ Chargement du fichier Markdown avec encodage UTF-8
+            loader = TextLoader(md_path, encoding="utf-8")
             docs.extend(loader.load())
+
     return docs
 
 # 📌 Création de la base de vecteurs avec ChromaDB
 def create_vectorstore(chunks):
     """Crée et stocke les embeddings dans ChromaDB"""
     print("🔄 Génération des embeddings et stockage dans ChromaDB...")
-    texts = [chunk.page_content for chunk in chunks]
-    embeddings = embed_texts(texts)  # 📌 Génère les vecteurs d’embedding
-    vectorstore = Chroma.from_embeddings(texts, embeddings, persist_directory=DB_DIR)
+    vectorstore = Chroma.from_documents(chunks, embedding_model, persist_directory=DB_DIR)
     return vectorstore
 
 # 📌 Recherche des informations dans Chroma
 def retrieve_context(query, k=3, char_limit=1000):
-    """Recherche les passages pertinents pour répondre à une question"""
-    vectorstore = Chroma(persist_directory=DB_DIR)
-    query_embedding = embed_texts([query])  # 📌 Embedding de la question
-    results = vectorstore.similarity_search_by_vector(query_embedding[0], k=k)
+    """Recherche les passages pertinents dans ChromaDB"""
+    vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embedding_model)
+    results = vectorstore.similarity_search(query, k=k)
+
     context_list = list(dict.fromkeys([res.page_content.strip() for res in results]))
     context = "\n".join(context_list)
+
     return context if len(context) <= char_limit else context[:char_limit]
 
-# 📌 Génération de réponse
+# 📌 Génération de réponse avec Hugging Face
 def generate_response(query):
     """Construit le prompt et génère une réponse avec Hugging Face"""
     context = retrieve_context(query)
+
     if not context:
         return "❌ Aucun contexte pertinent trouvé."
+
+    # 📌 Construction du prompt
     prompt = f"""
     📚 **Contexte** :
     {context}
 
     ❓ **Question** : {query}
     """
+
+    # 📌 Génération de texte avec Hugging Face
     response = generator(prompt, max_length=500, temperature=0.7, do_sample=True)
     return response[0]["generated_text"]
+
+# 📌 Enregistrement des réponses dans un fichier Markdown
+def save_to_file(question, response):
+    """Enregistre les réponses dans un fichier Markdown"""
+    with open(RESULTS_FILE, "a", encoding="utf-8") as f:
+        f.write(f"\n## ❓ {question.upper()}\n\n")
+        f.write(f"{response}\n")
+        f.write("=" * 100 + "\n")
 
 # 📌 Exécution automatique des questions
 def main():
@@ -122,6 +140,7 @@ def main():
     for question in QUESTIONS:
         response = generate_response(question)
         print(f"\n❓ {question.upper()}\n🤖 {response}\n")
+        save_to_file(question, response)
 
 if __name__ == "__main__":
     main()

@@ -12,3 +12,4 @@ torch
 accelerate
 sentence_transformers
 numpy
+sentencepiece
