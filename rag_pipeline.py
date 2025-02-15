@@ -17,7 +17,7 @@ RESULTS_FILE = "résultats.md"
 
 # 📌 Modèles Hugging Face
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # 📌 Modèle d’embedding
-GEN_MODEL = "mistralai/Mistral-7B-Instruct"  # 📌 Modèle pour la génération
+GEN_MODEL = "mistralai/Mistral-7B-v0.3"  # 📌 Modèle pour la génération
 
 # 📌 Liste de questions
 QUESTIONS = [
