@@ -9,10 +9,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
-# 📌 Cloner le dépôt Git (si ce n'est pas déjà fait)
-if not os.path.exists("/content/rag-tutorial-v2"):
-    !git clone https://github.com/VOTRE-NOM-UTILISATEUR/VOTRE-REPO.git
-
 # 📌 Chemin du dossier contenant les PDFs dans le repo
 DATA_DIR = "data"
 MD_DIR = "markdown_files"
